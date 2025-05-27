@@ -1,0 +1,8 @@
+{:paths ["."]
+ :deps {org.clj-commons/hickory {:mvn/version "0.7.7"}
+        cheshire/cheshire        {:mvn/version "5.11.0"}}
+
+ :tasks
+ {:search  {:doc "Run search CLI"
+            :task (run 'search/process-query)}
+  :default {:task (run 'search/process-query)}}}
