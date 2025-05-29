@@ -1,4 +1,4 @@
-(ns llm
+(ns agents.common
   (:require [babashka.http-client :as http]
             [cheshire.core :as json]
             [clojure.string :as str]))
@@ -12,18 +12,3 @@
                                  :stream false})})
         body (:body resp)]
     (-> body (json/parse-string true) :response)))
-
-
-(defn default-prompt [query]
-  (str "You are a helpful assistant. "
-       "Answer the question based on the context provided. "
-       "If you don't know the answer, say 'I don't know'. "
-       "Question: " query))
-
-
-(defn process-query [query]
-  (let [prompt (default-prompt query)
-        response (query-ollama prompt)]
-    (if (str/blank? response)
-      "I don't know."
-      response)))

@@ -1,16 +1,11 @@
 #!/usr/bin/env bb
 
 (ns watcher
-  (:require [babashka.pods :as pods]
-            [honey.sql :as sql]
+  (:require [honey.sql :as sql]
             [clojure.string :as str]
             [babashka.process :refer [process check]]
             [pod.babashka.go-sqlite3 :as sqlite]
             [llm :refer [process-query]]))
-
-;; 加载 go-sqlite3 pod
-(pods/load-pod 'org.babashka/go-sqlite3 "0.2.7")
-(pods/load-pod 'org.babashka/fswatcher "0.0.6")
 
 (def db-path (str (System/getProperty "user.home") "/Library/Messages/chat.db"))
 
@@ -50,15 +45,30 @@
         proc (check (process ["osascript" script-path to text] {:out :string}))]
     (println "✅ iMessage sending status:" (str/trim (:out proc)))))
 
+(defn parse-command [text]
+  (when-let [[_ command query] (re-matches #"@(\w+):\s*(.+)" text)]
+    {:command command :query query}))
+
+(defn dispatch-query [{:keys [command query] :as parsed}]
+  (cond
+    (nil? parsed)              (process-query {:agent :default :query (:text parsed)})
+    (= command "search")       (process-query {:agent :search :query query})
+    (= command "translate")    (process-query {:agent :translate :query query})
+    :else                      (process-query {:agent :default :query query})))
+
+(defn reply-message [contact result]
+  (println "📤 Sending message back to:" contact)
+  (doseq [chunk (partition-all 800 (seq result))]
+    (send-imessage contact (apply str chunk))))
+
 (defn handle-message [msg]
   (println "👉 handle-message invoked for:" msg)
   (when (= (:is_from_me msg) 0)
-    (let [query (:text msg)
-          result (process-query query)
-          contact (:contact msg)]
-      (println "📤 Sending message back to:" contact)
-      (doseq [chunk (partition-all 800 (seq result))]
-        (send-imessage contact (apply str chunk))))))
+    (let [text    (:text msg)
+          contact (:contact msg)
+          parsed  (parse-command text)
+          result  (dispatch-query (assoc parsed :text text))] ; fallback 用 text
+      (reply-message contact result))))
 
 (defn -main []
   (println "👁️ Watching iMessage new message...")

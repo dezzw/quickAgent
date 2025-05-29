@@ -1,0 +1,5 @@
+{:paths ["src"] ; 指定源码目录
+ :deps {org.clj-commons/hickory {:mvn/version "0.7.7"}
+        cheshire/cheshire        {:mvn/version "5.11.0"}
+        com.github.seancorfield/honeysql {:mvn/version "2.7.1310"}}
+ }

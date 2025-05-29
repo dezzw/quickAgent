@@ -6,7 +6,7 @@
             [clojure.string :as str]
             [hickory.core :as h]
             [hickory.select :as s]
-            [llm :refer [query-ollama]]))
+            [agents.common :refer [query-ollama]]))
 
 (defn fetch-suggestions [query]
   (let [resp (http/get "https://duckduckgo.com/ac/"
@@ -82,7 +82,7 @@
    content "\n\n"
    "请用简短的中文总结这个网页是否相关，以及是否值得阅读。若相关，请简述其主要信息；若不相关，请说明原因。"))
 
-(defn process-query [query]
+(defn process-search-agent [query]
   (println ">> 原始查询：" query)
   (doseq [sugg (fetch-suggestions query)]
     (println "\n=== 建议关键词：" sugg)
@@ -103,5 +103,5 @@
 ;; 执行入口
 (let [[query] *command-line-args*]
   (if query
-    (process-query query)
+    (process-search-agent query)
     (println "Usage: search.clj \"your query here\"")))
