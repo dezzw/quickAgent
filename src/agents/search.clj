@@ -1,7 +1,5 @@
-#!/usr/bin/env bb
-
 (ns agents.search
-  (:require [babashka.http-client :as http]
+  (:require [org.httpkit.client :as http]
             [cheshire.core :as json]
             [clojure.string :as str]
             [hickory.core :as h]
@@ -9,38 +7,32 @@
             [agents.common :refer [query-ollama]]))
 
 (defn fetch-suggestions [query]
-  (let [resp (http/get "https://duckduckgo.com/ac/"
-                       {:query-params {"q" query}
-                        :headers {"User-Agent" "Mozilla/5.0"}})
-        body (:body resp)
-        suggestions (json/parse-string body true)]
-    (->> suggestions
-         (map :phrase)
-         (take 5))))
+  (let [{:keys [body status error]}
+        @(http/get "https://duckduckgo.com/ac/"
+                   {:query-params {"q" query}
+                    :headers {"User-Agent" "Mozilla/5.0"}})]
+    (if (or error (not= status 200))
+      (do (println "⚠️ 查询 DuckDuckGo 建议失败：" error status) [])
+      (->> (json/parse-string body true)
+           (map :phrase)
+           (take 5)))))
 
 (defn fetch-ddg-results [query]
   (let [url "https://html.duckduckgo.com/html/"
         params {"q" query}
         headers {"User-Agent" "Mozilla/5.0"}
-        response (http/post url {:form-params params :headers headers})]
-
-    ;; (println "\n--- Raw HTML length:" (count (:body response))) ;; ✅ 确认响应是否返回
-
-    (let [html (:body response)
-          dom (-> html h/parse h/as-hickory)]
-
-      ;; (println "\n--- Parsed DOM:" (take 1 dom)) ;; ✅ 检查 DOM 结构
-
-      (let [results (s/select (s/class "result__body") dom)]
-
-        ;; (println "\n--- Matched result__body nodes:" (count results)) ;; ✅ CSS Selector 命中数
-
+        {:keys [body status error]}
+        @(http/post url {:form-params params :headers headers})]
+    (if (or error (not= status 200))
+      (do (println "⚠️ 查询 DuckDuckGo 结果失败：" error status) [])
+      (let [html body
+            dom (-> html h/parse h/as-hickory)
+            results (s/select (s/class "result__body") dom)]
         (->> results
              (map (fn [node]
                     (let [a-node (first (s/select (s/class "result__a") node))
                           title  (some-> a-node :content first)
                           url    (some-> a-node :attrs :href)]
-                      ;; (println "--- Extracted:" {:title title :url url})
                       (when (and title url)
                         {:title title :url url}))))
              (remove nil?)
@@ -63,13 +55,15 @@
 
 (defn fetch-page-content [url]
   (try
-    (let [{:keys [body status]} (http/get url {:headers {"User-Agent" "Mozilla/5.0"}})]
-      (if (= status 200)
-        (try
-          (extract-text-from-html body)
-          (catch Exception e
-            (str "提取失败: " (.getMessage e))))
-        (str "抓取失败，状态码: " status)))
+    (let [{:keys [body status error]}
+          @(http/get url {:headers {"User-Agent" "Mozilla/5.0"}})]
+      (cond
+        error (str "请求异常: " error)
+        (not= status 200) (str "抓取失败，状态码: " status)
+        :else (try
+                (extract-text-from-html body)
+                (catch Exception e
+                  (str "提取失败: " (.getMessage e))))))
     (catch Exception e
       (str "请求异常: " (.getMessage e)))))
 
@@ -100,8 +94,9 @@
         (catch Exception e
           (println "❌ 处理失败：" (.getMessage e)))))))
 
-;; 执行入口
-(let [[query] *command-line-args*]
-  (if query
-    (process-search-agent query)
-    (println "Usage: search.clj \"your query here\"")))
+;; 入口
+(defn -main [& args]
+  (let [query (first args)]
+    (if query
+      (process-search-agent query)
+      (println "Usage: clj -M -m agents.search \"your query here\""))))
